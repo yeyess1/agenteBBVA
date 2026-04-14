@@ -103,7 +103,7 @@ class WebScraper:
         Returns:
             List of URLs from sitemap
         """
-        sitemap_url = settings.bank_website_sitemap_url or f"{self.base_url}/sitemap.xml"
+        sitemap_url = settings.bank_website_sitemap_url or f"{self.base_url.rstrip('/')}/sitemap.xml"
         logger.info(f"Fetching sitemap from {sitemap_url}")
 
         html = self.fetch_page(sitemap_url)
@@ -115,10 +115,12 @@ class WebScraper:
         urls = []
 
         for loc in soup.find_all("loc"):
-            url = loc.text
-            if url.startswith(self.base_url.rstrip("/")):
+            url = loc.text.strip()
+            base_clean = self.base_url.rstrip("/")
+            if url.startswith(base_clean):
                 urls.append(url)
 
+        logger.info(f"Found {len(urls)} URLs in sitemap")
         return urls if urls else [self.base_url]
 
     def scrape_all(self) -> List[Dict]:

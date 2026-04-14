@@ -6,7 +6,6 @@ Manages embeddings storage and retrieval
 import logging
 from typing import List, Dict, Optional
 import chromadb
-from chromadb.config import Settings as ChromaSettings
 
 from src.config import settings
 
@@ -21,14 +20,10 @@ class ChromaStore:
 
     def __init__(self):
         """Initialize Chroma DB connection"""
-        # Configure Chroma with persistence
-        chroma_settings = ChromaSettings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=settings.chroma_persist_directory,
-            anonymized_telemetry=False,
+        # Use new Chroma client with persistent storage
+        self.client = chromadb.PersistentClient(
+            path=settings.chroma_persist_directory
         )
-
-        self.client = chromadb.Client(chroma_settings)
         self.collection = self.client.get_or_create_collection(
             name=settings.chroma_collection,
             metadata={"hnsw:space": "cosine"}
@@ -132,9 +127,5 @@ class ChromaStore:
             return {"error": str(e)}
 
     def persist(self):
-        """Persist collection to disk"""
-        try:
-            self.client.persist()
-            logger.info("Vector store persisted to disk")
-        except Exception as e:
-            logger.error(f"Error persisting: {e}")
+        """Persist collection to disk (automatic with PersistentClient)"""
+        logger.info("Vector store persistence is automatic with PersistentClient")
