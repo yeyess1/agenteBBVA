@@ -76,7 +76,7 @@ class WebScraper:
         Args:
             url: URL to scrape
         Returns:
-            Dict with url, title, and content, or None if failed
+            Dict with url, title, and content (HTML for hybrid chunking), or None if failed
         """
         logger.info(f"Scraping {url}")
         html = self.fetch_page(url)
@@ -85,16 +85,17 @@ class WebScraper:
 
         soup = BeautifulSoup(html, "html.parser")
         title = soup.title.string if soup.title else "Unknown"
-        content = self.extract_text(html)
 
-        if not content.strip():
+        # Return HTML content for hybrid chunking (chunker will parse it)
+        # Also include plain text as fallback
+        if not html.strip():
             logger.warning(f"No content extracted from {url}")
             return None
 
         return {
             "url": url,
             "title": title,
-            "content": content,
+            "content": html,  # ✅ HTML para hybrid chunking
         }
 
     def get_sitemap_urls(self) -> List[str]:
