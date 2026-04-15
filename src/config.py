@@ -26,15 +26,14 @@ class Settings(BaseSettings):
     context_window: int = 5
     max_conversation_length: int = 100
 
-    # Chroma DB
-    chroma_db_path: str = "./chroma_db"
-    chroma_collection: str = "bank_content"
-    chroma_persist_directory: str = "./chroma_data"
-
     # Database (Supabase)
-    supabase_url: Optional[str] = None
-    supabase_api_key: Optional[str] = None
-    supabase_service_role_key: Optional[str] = None
+    supabase_url: str
+    supabase_api_key: str
+    supabase_service_role_key: str
+
+    # Vector Store Configuration
+    vector_dimension: int = 1024  # BGE-M3 produces 1024-dimensional vectors
+    embedding_model: str = "BAAI/bge-m3"
 
     # API
     api_host: str = "0.0.0.0"

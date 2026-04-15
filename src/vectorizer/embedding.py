@@ -10,7 +10,7 @@ import hashlib
 from bs4 import BeautifulSoup
 
 from src.config import settings
-from src.vectorizer.chroma_store import ChromaStore
+from src.vectorizer.supabase_store import SupabaseVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +292,7 @@ class EmbeddingManager:
     def __init__(self):
         """Initialize embedding manager"""
         self.chunker = TextChunker()
-        self.vector_store = ChromaStore()
+        self.vector_store = SupabaseVectorStore()
 
     def process_and_index(self, pages: List[Dict]) -> int:
         """
