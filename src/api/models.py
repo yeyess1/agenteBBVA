@@ -55,6 +55,8 @@ class ClearHistoryResponse(BaseModel):
 
 class StatsResponse(BaseModel):
     """Statistics about indexed content"""
-    collection: str
+    vector_store: str
     document_count: int
-    persist_directory: str
+    embedding_model: str
+    vector_dimension: int
+    supabase_url: str

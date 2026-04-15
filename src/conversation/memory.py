@@ -1,13 +1,12 @@
 """
 Conversation memory module
-Manages conversation history per user
+Manages conversation history per user via Supabase
 """
 
 import logging
 from typing import List, Dict, Optional
 from datetime import datetime
-import json
-from pathlib import Path
+from supabase import create_client
 
 from src.config import settings
 
@@ -16,24 +15,21 @@ logger = logging.getLogger(__name__)
 
 class ConversationMemory:
     """
-    Manages conversation history per user ID
-    Supports both in-memory and persistent storage
+    Manages conversation history per user ID using Supabase
+    Stores messages array as JSONB per user
     """
 
-    def __init__(self, storage_dir: str = ".conversations"):
+    def __init__(self, storage_dir: str = None):
         """
-        Initialize conversation memory
+        Initialize conversation memory with Supabase backend
         Args:
-            storage_dir: Directory for storing conversation files
+            storage_dir: Deprecated, kept for backward compatibility
         """
-        self.storage_dir = Path(storage_dir)
-        self.storage_dir.mkdir(exist_ok=True)
-        # In-memory cache for active conversations
-        self._cache = {}
-
-    def _get_conversation_file(self, user_id: str) -> Path:
-        """Get path for user's conversation file"""
-        return self.storage_dir / f"{user_id}.json"
+        self.client = create_client(
+            settings.supabase_url,
+            settings.supabase_api_key
+        )
+        logger.info("Initialized Supabase conversation memory")
 
     def add_message(
         self,
@@ -48,29 +44,36 @@ class ConversationMemory:
             role: 'user' or 'assistant'
             content: Message content
         Returns:
-            Added message object
+            Added message object with timestamp
         """
-        message = {
-            "role": role,
-            "content": content,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
+        try:
+            timestamp = datetime.utcnow().isoformat()
+            new_message = {
+                "role": role,
+                "content": content,
+                "timestamp": timestamp,
+            }
 
-        # Load existing conversation
-        conversation = self._load_conversation(user_id)
-        conversation["messages"].append(message)
+            # Get existing conversation
+            conversation = self._load_conversation(user_id)
+            messages = conversation.get("messages", [])
 
-        # Enforce max length
-        if len(conversation["messages"]) > settings.max_conversation_length:
-            conversation["messages"] = conversation["messages"][
-                -settings.max_conversation_length:
-            ]
+            # Add new message
+            messages.append(new_message)
 
-        # Save conversation
-        self._save_conversation(user_id, conversation)
+            # Enforce max_conversation_length
+            if len(messages) > settings.max_conversation_length:
+                messages = messages[-settings.max_conversation_length:]
 
-        logger.info(f"Added {role} message to conversation {user_id}")
-        return message
+            # Update or insert conversation
+            self._save_conversation(user_id, messages)
+
+            logger.info(f"Added {role} message to conversation {user_id}")
+            return new_message
+
+        except Exception as e:
+            logger.error(f"Error adding message: {e}")
+            raise
 
     def get_messages(
         self,
@@ -78,20 +81,28 @@ class ConversationMemory:
         last_n: Optional[int] = None,
     ) -> List[Dict]:
         """
-        Get conversation messages
+        Get last N messages from conversation
         Args:
             user_id: User identifier
             last_n: Get last N messages (defaults to CONTEXT_WINDOW)
         Returns:
-            List of messages
+            List of messages in chronological order
         """
         last_n = last_n or settings.context_window
-        conversation = self._load_conversation(user_id)
-        messages = conversation["messages"]
 
-        if last_n and len(messages) > last_n:
-            return messages[-last_n:]
-        return messages
+        try:
+            conversation = self._load_conversation(user_id)
+            messages = conversation.get("messages", [])
+
+            if last_n and len(messages) > last_n:
+                messages = messages[-last_n:]
+
+            logger.info(f"Retrieved {len(messages)} messages for user {user_id}")
+            return messages
+
+        except Exception as e:
+            logger.error(f"Error retrieving messages: {e}")
+            return []
 
     def get_full_history(self, user_id: str) -> List[Dict]:
         """
@@ -99,67 +110,101 @@ class ConversationMemory:
         Args:
             user_id: User identifier
         Returns:
-            Full list of all messages
+            Full list of all messages in chronological order
         """
-        conversation = self._load_conversation(user_id)
-        return conversation["messages"]
+        try:
+            conversation = self._load_conversation(user_id)
+            messages = conversation.get("messages", [])
+
+            logger.info(f"Retrieved full history: {len(messages)} messages for user {user_id}")
+            return messages
+
+        except Exception as e:
+            logger.error(f"Error retrieving full history: {e}")
+            return []
 
     def clear_conversation(self, user_id: str) -> bool:
         """
-        Clear conversation for user
+        Clear all conversation messages for user
         Args:
             user_id: User identifier
         Returns:
-            True if successful
+            True if successful, False otherwise
         """
         try:
-            file_path = self._get_conversation_file(user_id)
-            if file_path.exists():
-                file_path.unlink()
-                logger.info(f"Cleared conversation for user {user_id}")
+            # Delete the conversation row
+            self.client.table("conversations").delete().eq(
+                "user_id", user_id
+            ).execute()
 
-            # Clear cache
-            if user_id in self._cache:
-                del self._cache[user_id]
-
+            logger.info(f"Cleared conversation for user {user_id}")
             return True
+
         except Exception as e:
             logger.error(f"Error clearing conversation: {e}")
             return False
 
     def _load_conversation(self, user_id: str) -> Dict:
-        """Load conversation from storage or cache"""
-        # Check cache first
-        if user_id in self._cache:
-            return self._cache[user_id]
-
-        # Try to load from file
-        file_path = self._get_conversation_file(user_id)
-        if file_path.exists():
-            try:
-                with open(file_path, "r") as f:
-                    conversation = json.load(f)
-                    self._cache[user_id] = conversation
-                    return conversation
-            except Exception as e:
-                logger.error(f"Error loading conversation: {e}")
-
-        # Create new conversation
-        conversation = {
-            "user_id": user_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "messages": [],
-        }
-        self._cache[user_id] = conversation
-        return conversation
-
-    def _save_conversation(self, user_id: str, conversation: Dict) -> bool:
-        """Save conversation to file"""
+        """
+        Load conversation from Supabase
+        Args:
+            user_id: User identifier
+        Returns:
+            Conversation dict with messages array
+        """
         try:
-            file_path = self._get_conversation_file(user_id)
-            with open(file_path, "w") as f:
-                json.dump(conversation, f, indent=2)
+            result = self.client.table("conversations").select(
+                "*"
+            ).eq("user_id", user_id).execute()
+
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+
+            # Return empty conversation structure
+            return {
+                "user_id": user_id,
+                "messages": [],
+                "created_at": datetime.utcnow().isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(f"Error loading conversation: {e}")
+            return {
+                "user_id": user_id,
+                "messages": [],
+                "created_at": datetime.utcnow().isoformat(),
+            }
+
+    def _save_conversation(self, user_id: str, messages: List[Dict]) -> bool:
+        """
+        Save conversation to Supabase (insert or update)
+        Args:
+            user_id: User identifier
+            messages: Array of messages
+        Returns:
+            True if successful
+        """
+        try:
+            # Check if conversation exists
+            existing = self.client.table("conversations").select(
+                "id"
+            ).eq("user_id", user_id).execute()
+
+            if existing.data and len(existing.data) > 0:
+                # Update existing
+                self.client.table("conversations").update({
+                    "messages": messages,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }).eq("user_id", user_id).execute()
+            else:
+                # Insert new
+                self.client.table("conversations").insert({
+                    "user_id": user_id,
+                    "messages": messages,
+                }).execute()
+
             return True
+
         except Exception as e:
             logger.error(f"Error saving conversation: {e}")
             return False
