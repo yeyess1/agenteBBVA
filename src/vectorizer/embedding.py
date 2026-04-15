@@ -339,16 +339,18 @@ class EmbeddingManager:
 
         return 0
 
-    def search_similar(self, query: str) -> List[Dict]:
+    def search_similar(self, query: str, n_results: int = None) -> List[Dict]:
         """
         Search for documents similar to query
         Args:
             query: Query text
+            n_results: Number of results to return (defaults to settings.retrieval_top_k)
         Returns:
             List of similar documents with scores
         """
+        n_results = n_results or settings.retrieval_top_k
         logger.info(f"Searching for similar documents to: {query[:50]}...")
-        results = self.vector_store.search(query, n_results=settings.retrieval_top_k)
+        results = self.vector_store.search(query, n_results=n_results)
         logger.info(f"Found {len(results)} relevant documents")
         return results
 

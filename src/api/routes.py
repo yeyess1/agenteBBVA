@@ -94,13 +94,14 @@ async def ask_question(request: QueryRequest) -> QueryResponse:
         # Retrieve relevant documents
         documents = retriever.retrieve(question)
         context = retriever.format_context(documents)
+        context_quality = retriever.assess_context_quality(documents)
         sources = retriever.get_sources(documents)
 
         # Get conversation history (last N messages)
         conversation_history = memory.get_messages(user_id)
 
-        # Generate response
-        answer = generator.generate(question, context, conversation_history)
+        # Generate response (async generator)
+        answer = await generator.generate(question, context, conversation_history, context_quality)
 
         # Store in conversation memory
         memory.add_message(user_id, "user", question)

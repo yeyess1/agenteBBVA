@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     vector_dimension: int = 1024  # BGE-M3 produces 1024-dimensional vectors
     embedding_model: str = "BAAI/bge-m3"
 
+    # RAG Retrieval Configuration
+    retrieval_score_threshold: float = 0.40  # BGE-M3 cosine similarity minimum (0.40-0.54 = weak relevance)
+    mmr_lambda: float = 0.7  # Maximal Marginal Relevance: λ·relevance - (1-λ)·diversity
+
+    # Claude API Configuration
+    claude_model: str = "claude-haiku-4-5-20251001"
+
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000
