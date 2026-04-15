@@ -10,8 +10,8 @@ from typing import Optional
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
-    # Claude API
-    anthropic_api_key: str
+    # Claude API (keep for backward compatibility)
+    anthropic_api_key: Optional[str] = None
 
     # Bank Website
     bank_website_url: str
@@ -39,8 +39,10 @@ class Settings(BaseSettings):
     retrieval_score_threshold: float = 0.40  # BGE-M3 cosine similarity minimum (0.40-0.54 = weak relevance)
     mmr_lambda: float = 0.7  # Maximal Marginal Relevance: λ·relevance - (1-λ)·diversity
 
-    # Claude API Configuration
-    claude_model: str = "claude-haiku-4-5-20251001"
+    # LLM Configuration
+    llm_provider: str = "gemini"  # "gemini" or "claude"
+    gemini_api_key: Optional[str] = None
+    gemini_model: str = "gemini-2.0-flash"  # Latest Gemini model with better performance
 
     # API
     api_host: str = "0.0.0.0"

@@ -1,11 +1,12 @@
 """
 Response generator module
-Generates responses using Claude API with advanced RAG prompt engineering
+Generates responses using Google Gemini API with advanced RAG prompt engineering
 """
 
 import logging
 from typing import List, Dict, Optional
-from anthropic import AsyncAnthropic
+import asyncio
+import google.generativeai as genai
 
 from src.config import settings
 
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class ResponseGenerator:
     """
-    Advanced response generator using AsyncAnthropic with RAG-specific
+    Advanced response generator using Google Gemini with RAG-specific
     prompt engineering, context quality signals, and confidence/uncertainty handling
     """
 
@@ -58,8 +59,15 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
 - Si la pregunta es completamente fuera de dominio (no sobre BBVA): responde amablemente indicando que solo asistes con temas del banco."""
 
     def __init__(self):
-        """Initialize response generator with AsyncAnthropic client"""
-        self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        """Initialize response generator with Gemini API"""
+        api_key = settings.gemini_api_key
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY is required. Set it in .env file."
+            )
+        genai.configure(api_key=api_key)
+        self.model = settings.gemini_model
+        logger.info(f"Initialized Gemini generator with model: {self.model}")
 
     async def generate(
         self,
@@ -69,7 +77,7 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
         context_quality: str = "medium",
     ) -> str:
         """
-        Generate response using Claude API with RAG context and conversation history
+        Generate response using Google Gemini API with RAG context and conversation history
         Args:
             query: User's current question
             context: Retrieved relevant documents with scores
@@ -78,43 +86,66 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
         Returns:
             Generated response text
         """
-        logger.info(f"Generating response (context_quality={context_quality})")
-
-        # Build message list with proper RAG architecture
-        messages = self._build_messages(query, context, conversation_history, context_quality)
+        logger.info(f"Generating response with Gemini (context_quality={context_quality})")
 
         try:
-            response = await self.client.messages.create(
-                model=settings.claude_model,
-                max_tokens=2048,
-                system=[
-                    {
-                        "type": "text",
-                        "text": self.SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"},  # Enable prompt caching
-                    }
-                ],
-                messages=messages,
+            # Build messages with proper RAG architecture
+            formatted_messages = self._build_messages(query, context, conversation_history, context_quality)
+
+            # Run Gemini API call in thread pool to avoid blocking event loop
+            response_text = await asyncio.to_thread(
+                self._call_gemini_sync,
+                formatted_messages
             )
 
-            assistant_response = response.content[0].text
-
-            # Log prompt caching metrics if available
-            if hasattr(response, "usage"):
-                cache_read = getattr(response.usage, "cache_read_input_tokens", 0)
-                cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0)
-                if cache_read > 0 or cache_creation > 0:
-                    logger.info(
-                        f"Prompt caching: read={cache_read} tokens, "
-                        f"creation={cache_creation} tokens"
-                    )
-
-            logger.info(f"Generated response ({len(assistant_response)} characters)")
-            return assistant_response
+            logger.info(f"Generated response ({len(response_text)} characters)")
+            return response_text
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             raise
+
+    def _call_gemini_sync(self, formatted_messages: List[Dict]) -> str:
+        """
+        Synchronous Gemini API call (executed in thread pool)
+
+        Args:
+            formatted_messages: List of dicts with 'role' and 'content' keys
+
+        Returns:
+            Generated response text
+        """
+        # Initialize model with system prompt
+        model = genai.GenerativeModel(
+            model_name=self.model,
+            system_instruction=self.SYSTEM_PROMPT,
+            generation_config={
+                "max_output_tokens": 2048,
+                "temperature": 0.7,
+            }
+        )
+
+        # Prepare conversation content
+        # For first message, prepend RAG context; for history, use clean exchanges
+        contents = []
+
+        # Add conversation history (clean exchanges without context)
+        for msg in formatted_messages[:-1]:  # All except last message
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [msg["content"]]})
+
+        # Add current message with RAG context (last message)
+        last_msg = formatted_messages[-1]
+        contents.append({"role": "user", "parts": [last_msg["content"]]})
+
+        # Generate response
+        response = model.generate_content(contents)
+
+        # Extract text from response
+        if response.text:
+            return response.text
+
+        raise ValueError(f"Empty response from Gemini API")
 
     def _build_messages(
         self,
@@ -124,7 +155,7 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
         context_quality: str,
     ) -> List[Dict]:
         """
-        Build message list for Claude API with proper RAG architecture
+        Build message list for Gemini API with proper RAG architecture
 
         Key RAG pattern:
         - Conversation history: clean exchanges (no context blobs)
@@ -148,8 +179,10 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
 
         # Step 1: Add clean conversation history (no context contamination)
         for msg in conversation_history:
+            # Convert role: "assistant" becomes "model" in Gemini API
+            role = "model" if msg["role"] == "assistant" else "user"
             messages.append({
-                "role": msg["role"],
+                "role": role,
                 "content": msg["content"],  # bare message text only
             })
 
