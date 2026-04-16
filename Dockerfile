@@ -25,11 +25,11 @@ COPY start.sh /app/start.sh
 # Create data directory
 RUN mkdir -p /app/chroma_data && chmod +x /app/start.sh
 
-EXPOSE 8000
+EXPOSE 10000
 
-# Health check
+# Health check (Render uses port 10000 by default)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+    CMD curl -f http://localhost:10000/health || exit 1
 
 # Use start script to properly handle PORT variable
 CMD ["/app/start.sh"]
