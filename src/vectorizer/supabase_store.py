@@ -7,7 +7,6 @@ import logging
 from typing import List, Dict, Optional
 import numpy as np
 from supabase import create_client
-from sentence_transformers import SentenceTransformer
 
 from src.config import settings
 
@@ -27,6 +26,10 @@ class SupabaseVectorStore:
             settings.supabase_url,
             settings.supabase_api_key
         )
+
+        # Lazy import: sentence_transformers pulls in torch (~500MB of C extensions).
+        # Importing at module level blocks uvicorn port binding on Render free tier.
+        from sentence_transformers import SentenceTransformer
 
         # Initialize BGE-M3 embedding model
         logger.info(f"Loading embedding model: {settings.embedding_model}")

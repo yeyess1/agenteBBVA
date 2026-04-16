@@ -17,11 +17,6 @@ from src.api.models import (
     StatsResponse,
     MetricsResponse,
 )
-from src.scraper.web_scraper import WebScraper
-from src.vectorizer.embedding import EmbeddingManager
-from src.rag.retriever import DocumentRetriever
-from src.rag.generator import ResponseGenerator
-from src.conversation.memory import ConversationMemory
 from src.metrics import MetricsCollector, MetricsAggregator
 from src.config import settings
 
@@ -41,6 +36,15 @@ _memory = None
 def get_components():
     global _scraper, _embedding_manager, _retriever, _generator, _memory
     if _scraper is None:
+        # Deferred imports: sentence_transformers/torch and google.generativeai are
+        # large C-extension libraries. Importing them at module level blocks uvicorn
+        # from binding the port (Render times out). Load them here on first request.
+        from src.scraper.web_scraper import WebScraper
+        from src.vectorizer.embedding import EmbeddingManager
+        from src.rag.retriever import DocumentRetriever
+        from src.rag.generator import ResponseGenerator
+        from src.conversation.memory import ConversationMemory
+
         logger.info("Initializing components (first request)...")
         _scraper = WebScraper()
         _embedding_manager = EmbeddingManager()

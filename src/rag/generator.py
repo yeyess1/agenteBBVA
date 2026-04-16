@@ -7,7 +7,6 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 import asyncio
-import google.generativeai as genai
 
 from src.config import settings
 
@@ -72,6 +71,10 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
 
     def __init__(self):
         """Initialize response generator with Gemini API"""
+        # Lazy import to avoid loading google.generativeai at module-level startup
+        import google.generativeai as genai
+        self._genai = genai
+
         api_key = settings.gemini_api_key
         if not api_key:
             raise ValueError(
@@ -133,7 +136,7 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
             GenerationResult with text and token counts extracted from usage_metadata
         """
         # Initialize model with system prompt
-        model = genai.GenerativeModel(
+        model = self._genai.GenerativeModel(
             model_name=self.model,
             system_instruction=self.SYSTEM_PROMPT,
             generation_config={
