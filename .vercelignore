@@ -1,0 +1,13 @@
+src/
+requirements.txt
+.env
+.env.*
+venv/
+*.egg-info
+__pycache__
+.python-version
+pyproject.toml
+Dockerfile
+docker-compose.yml
+backend.Dockerfile
+start.sh
