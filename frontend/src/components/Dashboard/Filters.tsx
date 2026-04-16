@@ -1,6 +1,6 @@
 "use client";
 
-import { type TimeWindow, WINDOW_LABELS } from "@/lib/metricsApi";
+import { type TimeWindow, WINDOW_LABELS } from "../../lib/metricsApi";
 
 interface FiltersProps {
   window: TimeWindow;
@@ -35,11 +35,10 @@ export default function Filters({
           <button
             key={w}
             onClick={() => onWindowChange(w)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              window === w
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${window === w
                 ? "bg-[#004481] text-white shadow-sm"
                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-            }`}
+              }`}
           >
             {w}
           </button>

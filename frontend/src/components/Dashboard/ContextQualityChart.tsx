@@ -8,7 +8,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import type { ContextQualityDistribution } from "@/lib/metricsApi";
+import type { ContextQualityDistribution } from "../../lib/metricsApi";
 
 interface Props {
   distribution: ContextQualityDistribution;
@@ -18,10 +18,10 @@ interface Props {
 }
 
 const QUALITY_CONFIG = [
-  { key: "high",   label: "Alta",    color: "#004481" },
-  { key: "medium", label: "Media",   color: "#0369a1" },
-  { key: "low",    label: "Baja",    color: "#7dd3fc" },
-  { key: "none",   label: "Sin ctx", color: "#e5e7eb" },
+  { key: "high", label: "Alta", color: "#004481" },
+  { key: "medium", label: "Media", color: "#0369a1" },
+  { key: "low", label: "Baja", color: "#7dd3fc" },
+  { key: "none", label: "Sin ctx", color: "#e5e7eb" },
 ] as const;
 
 function pct(fraction: number) {
