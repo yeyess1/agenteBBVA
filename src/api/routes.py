@@ -29,12 +29,26 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Initialize components
-scraper = WebScraper()
-embedding_manager = EmbeddingManager()
-retriever = DocumentRetriever()
-generator = ResponseGenerator()
-memory = ConversationMemory()
+# Components initialized lazily on first request (not at module import)
+# This allows uvicorn to bind the port before heavy models load
+_scraper = None
+_embedding_manager = None
+_retriever = None
+_generator = None
+_memory = None
+
+
+def get_components():
+    global _scraper, _embedding_manager, _retriever, _generator, _memory
+    if _scraper is None:
+        logger.info("Initializing components (first request)...")
+        _scraper = WebScraper()
+        _embedding_manager = EmbeddingManager()
+        _retriever = DocumentRetriever()
+        _generator = ResponseGenerator()
+        _memory = ConversationMemory()
+        logger.info("Components initialized.")
+    return _scraper, _embedding_manager, _retriever, _generator, _memory
 
 
 @router.post("/scrape", response_model=ScrapeResponse)
@@ -48,6 +62,7 @@ async def scrape_website(request: ScrapeRequest) -> ScrapeResponse:
     3. Indexes it in Chroma DB for semantic search
     """
     try:
+        scraper, embedding_manager, _, _, _ = get_components()
         url = request.url or scraper.base_url
         logger.info(f"Starting scrape of {url}")
 
@@ -95,6 +110,7 @@ async def ask_question(request: QueryRequest) -> QueryResponse:
             detail="user_id and question are required"
         )
 
+    _, _, retriever, generator, memory = get_components()
     collector = MetricsCollector(user_id)
     collector.set_query(question)
 
@@ -167,6 +183,7 @@ async def get_history(user_id: str) -> HistoryResponse:
     (not limited by CONTEXT_WINDOW)
     """
     try:
+        _, _, _, _, memory = get_components()
         user_id = user_id.strip()
         messages = memory.get_full_history(user_id)
 
@@ -195,6 +212,7 @@ async def clear_history(user_id: str) -> ClearHistoryResponse:
     Clear conversation history for a user
     """
     try:
+        _, _, _, _, memory = get_components()
         user_id = user_id.strip()
         success = memory.clear_conversation(user_id)
 
@@ -216,6 +234,7 @@ async def get_stats() -> StatsResponse:
     Get statistics about indexed content
     """
     try:
+        _, embedding_manager, _, _, _ = get_components()
         stats = embedding_manager.get_stats()
         return StatsResponse(**stats)
     except Exception as e:
