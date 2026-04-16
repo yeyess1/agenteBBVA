@@ -14,11 +14,13 @@
 - [Resumen Ejecutivo](#resumen-ejecutivo)
 - [Requisitos Previos](#requisitos-previos)
 - [Instalación y Setup](#instalación-y-setup)
+- [Configuración de Credenciales](#configuración-de-credenciales)
 - [Arquitectura RAG](#arquitectura-rag)
 - [Patrones de Diseño](#patrones-de-diseño)
 - [Stack Tecnológico](#stack-tecnológico)
 - [Cómo Usar](#cómo-usar)
 - [Endpoints API](#endpoints-api)
+- [Parámetros Técnicos](#parámetros-técnicos)
 - [Limitaciones Conocidas](#limitaciones-conocidas)
 - [Futuras Mejoras](#futuras-mejoras)
 
@@ -111,6 +113,46 @@ npm run dev
 # - Backend: http://localhost:8000
 # - Frontend: http://localhost:3000
 ```
+
+---
+
+## 🔐 Configuración de Credenciales
+
+### Para Demostración Rápida
+El proyecto incluye un `.env.example` con credenciales de **prueba** que funcionan para imitar la estrcutra en el env real:
+
+```bash
+cp .env.example .env
+docker-compose up --build
+```
+Esto levantará el proyecto con datos de demostración en Supabase.
+
+### Para Usar tus Propias Credenciales
+Si quieres conectar al Supabase y Gemini del proyecto, utiliza los datos que te proporciono en el correo de respuesta a la prueba tecnica:
+
+1. **Obtén tus claves:**
+   
+
+2. **Configura .env:**
+   ```bash
+   cp .env.example .env
+   nano .env # o tu editor preferido
+   # Edita:
+   GEMINI_API_KEY=tu_clave_aqui
+   SUPABASE_URL=https://tu-proyecto.supabase.co
+   SUPABASE_API_KEY=tu_key
+   SUPABASE_SERVICE_ROLE_KEY=tu_service_key
+   ```   ```
+
+4. **Levanta los servicios:**
+   ```bash
+   docker-compose up --build
+   ```
+
+
+## 📝 Notas 
+- El `.env.example` es un **template** con valores demo
+- Las credenciales reales están en tu máquina local (`.env`)
 
 ---
 
@@ -335,21 +377,7 @@ def _mmr_rerank(self, query, documents, top_k):
 
 ## 💬 Cómo Usar
 
-### 1. Scraping Inicial (Indexar Contenido)
 
-```bash
-# Una sola vez al inicio
-curl -X POST http://localhost:8000/api/scrape \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://www.bancodeoccidente.com.co"}'
-
-# Respuesta:
-# {
-#   "success": true,
-#   "message": "Successfully scraped and indexed 145 pages with 1203 chunks",
-#   "documents_indexed": 1203
-# }
-```
 
 ### 2. Hacer una Pregunta (Chat)
 
@@ -461,9 +489,9 @@ GET /health
 
 ---
 
-## ⚙️ Configuración
+## ⚙️ Parámetros Técnicos (Opcional)
 
-Todos los parámetros se controlan vía `.env`:
+Si deseas ajustar el comportamiento del RAG, puedes modificar estos valores en tu `.env`:
 
 ```bash
 # RAG Retrieval
@@ -476,17 +504,8 @@ MMR_LAMBDA=0.7                          # Balance: relevancia (70%) vs diversida
 # Conversación
 CONTEXT_WINDOW=5                        # Mensajes previos a incluir
 MAX_CONVERSATION_LENGTH=100             # Máximo historial por usuario
-
-# LLM
-LLM_PROVIDER=gemini                     # "gemini" o "claude"
-GEMINI_MODEL=gemini-2.0-flash           # Modelo Gemini
-GEMINI_API_KEY=<tu-api-key>            # Obtener de https://ai.google.dev
-
-# Supabase
-SUPABASE_URL=<proyecto>.supabase.co
-SUPABASE_API_KEY=<anon-key>
-SUPABASE_SERVICE_ROLE_KEY=<service-key>
 ```
+
 
 ---
 
@@ -566,8 +585,7 @@ def _mmr_rerank(query, documents, top_k):
 
 ## 🚀 Futuras Mejoras
 
-### Corto Plazo (1-2 semanas)
-- [ ] Implementar Cross-Encoder como reranker alternativo (10x más rápido)
+
 - [ ] Agregar caching de embeddings para queries repetidas
 - [ ] Rate limiting y autenticación en API
 - [ ] Tests e2e con Playwright
@@ -635,30 +653,7 @@ agenteBBVA/
 └── README.md
 ```
 
-### Ejecutar Tests
 
-```bash
-# Unit tests
-pytest tests/ -v
-
-# Con coverage
-pytest tests/ --cov=src --cov-report=html
-
-# Integration tests (requiere Supabase real)
-pytest tests/ -m integration -v
-```
-
-### Logging
-
-```python
-# Debug logging
-export LOG_LEVEL=DEBUG
-python -m uvicorn src.main:app --reload
-
-# Ver logs en JSON estructurado
-# Grep para errores en Gemini
-grep -i "error\|gemini" logs/app.log
-```
 
 ---
 
@@ -690,30 +685,17 @@ grep -i "error\|gemini" logs/app.log
 
 ---
 
-## 📄 Licencia
 
-MIT License - Ver [LICENSE](LICENSE)
 
 ---
 
 ## 👤 Autor
 
-**Yeiver Castillo** - [@yeyess1](https://github.com/yeyess1)
+**Yeiver Sanabria** - [@yeyess1](https://github.com/yeyess1)
 
 Prueba Técnica: BBVA Colombia - Asistente RAG con Web Scraping  
 Entregado: 15 de Abril de 2026
 
 ---
 
-## 📞 Soporte
 
-Para problemas o preguntas:
-1. Revisar [Limitaciones Conocidas](#limitaciones-conocidas)
-2. Consultar logs: `docker-compose logs backend`
-3. Validar `.env`: todos los valores requeridos presentes
-4. Abrir issue en GitHub
-
----
-
-**Last Updated**: 15 de Abril de 2026  
-**Status**: ✅ Funcional - Listo para producción con mejoras
