@@ -1,10 +1,4 @@
 {
-  "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/next"
-    }
-  ],
   "env": {
     "NEXT_PUBLIC_API_URL": "https://agentebbva.onrender.com"
   }
