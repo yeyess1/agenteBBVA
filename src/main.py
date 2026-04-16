@@ -44,7 +44,9 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:8000",
         "https://agente-bbva-aak8wa1q3-yeiver-s-projects-0e0b428d.vercel.app",
-        "https://agente-bbva.vercel.app",  # potential alias
+        "https://agente-bbva.vercel.app",
+        "https://frontend-eight-psi-46.vercel.app",  # current frontend deployment
+        "https://*.vercel.app",  # allow all Vercel deployments
     ],
     allow_credentials=True,
     allow_methods=["*"],
