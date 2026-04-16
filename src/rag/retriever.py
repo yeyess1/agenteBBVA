@@ -50,6 +50,12 @@ class DocumentRetriever:
     def __init__(self):
         """Initialize retriever with embedding manager"""
         self.embedding_manager = EmbeddingManager()
+        # Stats from the most recent retrieve() call — used by MetricsCollector
+        self._last_retrieval_stats: Dict = {
+            "candidate_count": 0,
+            "threshold_filtered": 0,
+            "mmr_applied": False,
+        }
 
     def retrieve(self, query: str, top_k: int = None) -> List[Dict]:
         """
@@ -80,19 +86,45 @@ class DocumentRetriever:
 
         if not results:
             logger.warning("No documents retrieved from vector store")
+            self._last_retrieval_stats = {
+                "candidate_count": 0,
+                "threshold_filtered": 0,
+                "mmr_applied": False,
+            }
             return []
+
+        raw_count = len(results)
 
         # Step 3: Apply score threshold filtering
         results = self._apply_threshold(results, top_k)
+        threshold_filtered = raw_count - len(results)
+
         if not results:
+            self._last_retrieval_stats = {
+                "candidate_count": raw_count,
+                "threshold_filtered": threshold_filtered,
+                "mmr_applied": False,
+            }
             return []
 
         # Step 4: Apply MMR reranking (if we have more than top_k)
-        if len(results) > top_k:
+        mmr_applied = len(results) > top_k
+        if mmr_applied:
             results = self._mmr_rerank(query_expanded, results, top_k)
+
+        # Expose stats for MetricsCollector
+        self._last_retrieval_stats = {
+            "candidate_count": raw_count,
+            "threshold_filtered": threshold_filtered,
+            "mmr_applied": mmr_applied,
+        }
 
         logger.info(f"Retrieved and reranked {len(results)} documents (threshold: {settings.retrieval_score_threshold})")
         return results
+
+    def get_last_retrieval_stats(self) -> Dict:
+        """Return internal stats from the most recent retrieve() call."""
+        return self._last_retrieval_stats.copy()
 
     def _preprocess_query(self, query: str) -> str:
         """

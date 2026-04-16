@@ -2,8 +2,9 @@
 API routes for RAG Assistant
 """
 
+import asyncio
 import logging
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from datetime import datetime
 
 from src.api.models import (
@@ -14,12 +15,15 @@ from src.api.models import (
     HistoryResponse,
     ClearHistoryResponse,
     StatsResponse,
+    MetricsResponse,
 )
 from src.scraper.web_scraper import WebScraper
 from src.vectorizer.embedding import EmbeddingManager
 from src.rag.retriever import DocumentRetriever
 from src.rag.generator import ResponseGenerator
 from src.conversation.memory import ConversationMemory
+from src.metrics import MetricsCollector, MetricsAggregator
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -74,49 +78,79 @@ async def scrape_website(request: ScrapeRequest) -> ScrapeResponse:
 @router.post("/ask", response_model=QueryResponse)
 async def ask_question(request: QueryRequest) -> QueryResponse:
     """
-    Ask a question about bank information
+    Ask a question about bank information.
 
-    This endpoint:
-    1. Retrieves relevant documents from vector store
-    2. Generates response using Claude API with conversation history
-    3. Stores the conversation for future context
+    Pipeline:
+    1. Retrieve relevant documents from vector store (with MMR reranking)
+    2. Generate response using Gemini with conversation history
+    3. Persist conversation turn
+    4. Fire-and-forget: persist metrics to Supabase
     """
+    user_id = request.user_id.strip()
+    question = request.question.strip()
+
+    if not user_id or not question:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_id and question are required"
+        )
+
+    collector = MetricsCollector(user_id)
+    collector.set_query(question)
+
     try:
-        user_id = request.user_id.strip()
-        question = request.question.strip()
+        # ── Retrieval ────────────────────────────────────────────
+        with collector.retrieval_timer():
+            documents = retriever.retrieve(question)
 
-        if not user_id or not question:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="user_id and question are required"
-            )
-
-        # Retrieve relevant documents
-        documents = retriever.retrieve(question)
         context = retriever.format_context(documents)
         context_quality = retriever.assess_context_quality(documents)
         sources = retriever.get_sources(documents)
+        retrieval_stats = retriever.get_last_retrieval_stats()
 
-        # Get conversation history (last N messages)
+        collector.set_retrieval_stats(
+            documents=documents,
+            context_quality=context_quality,
+            candidate_count=retrieval_stats.get("candidate_count", 0),
+            threshold_filtered=retrieval_stats.get("threshold_filtered", 0),
+            mmr_applied=retrieval_stats.get("mmr_applied", False),
+        )
+
+        # ── Generation ───────────────────────────────────────────
         conversation_history = memory.get_messages(user_id)
 
-        # Generate response (async generator)
-        answer = await generator.generate(question, context, conversation_history, context_quality)
+        with collector.generation_timer():
+            result = await generator.generate(
+                question, context, conversation_history, context_quality
+            )
 
-        # Store in conversation memory
+        collector.set_generation_stats(
+            answer=result.text,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            model=settings.gemini_model,
+        )
+
+        # ── Persist conversation turn ────────────────────────────
         memory.add_message(user_id, "user", question)
-        memory.add_message(user_id, "assistant", answer)
+        memory.add_message(user_id, "assistant", result.text)
+
+        # ── Persist metrics (fire-and-forget) ────────────────────
+        asyncio.create_task(collector.save())
 
         return QueryResponse(
             user_id=user_id,
             question=question,
-            answer=answer,
+            answer=result.text,
             sources=sources,
             timestamp=datetime.utcnow(),
         )
+
     except HTTPException:
         raise
     except Exception as e:
+        collector.mark_error(str(e))
+        asyncio.create_task(collector.save())
         logger.error(f"Query error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -186,6 +220,68 @@ async def get_stats() -> StatsResponse:
         return StatsResponse(**stats)
     except Exception as e:
         logger.error(f"Stats error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+# ── Metrics endpoints ─────────────────────────────────────────────────────────
+
+_aggregator = MetricsAggregator()
+
+
+@router.get("/metrics", response_model=MetricsResponse)
+async def get_global_metrics(
+    hours: int = Query(default=24, ge=1, le=720, description="Lookback window in hours (max 720 = 30 days)")
+) -> MetricsResponse:
+    """
+    Global aggregated metrics over the last N hours.
+
+    Returns retrieval quality, generation token usage, latency breakdown,
+    estimated cost, and request counts for all users combined.
+
+    Query params:
+    - **hours**: lookback window (default 24, max 720)
+    """
+    try:
+        data = await _aggregator.get_global_stats(hours=hours)
+        return MetricsResponse(**data)
+    except Exception as e:
+        logger.error(f"Global metrics error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get("/metrics/{user_id}", response_model=MetricsResponse)
+async def get_user_metrics(
+    user_id: str,
+    days: int = Query(default=30, ge=1, le=365, description="Lookback window in days (max 365)")
+) -> MetricsResponse:
+    """
+    Per-user aggregated metrics over the last N days.
+
+    Returns the same breakdown as the global endpoint but scoped to a
+    single user_id. Useful for session-level analysis.
+
+    Query params:
+    - **days**: lookback window (default 30, max 365)
+    """
+    try:
+        user_id = user_id.strip()
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="user_id is required"
+            )
+        data = await _aggregator.get_user_stats(user_id=user_id, days=days)
+        return MetricsResponse(**data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"User metrics error for {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

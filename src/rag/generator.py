@@ -4,6 +4,7 @@ Generates responses using Google Gemini API with advanced RAG prompt engineering
 """
 
 import logging
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 import asyncio
 import google.generativeai as genai
@@ -11,6 +12,17 @@ import google.generativeai as genai
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GenerationResult:
+    """
+    Result returned by ResponseGenerator.generate().
+    Bundles the response text with token usage for metrics instrumentation.
+    """
+    text: str
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class ResponseGenerator:
@@ -75,16 +87,18 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
         context: str,
         conversation_history: List[Dict],
         context_quality: str = "medium",
-    ) -> str:
+    ) -> GenerationResult:
         """
-        Generate response using Google Gemini API with RAG context and conversation history
+        Generate response using Google Gemini API with RAG context and conversation history.
+
         Args:
             query: User's current question
             context: Retrieved relevant documents with scores
             conversation_history: Previous messages in conversation (clean, no context blobs)
             context_quality: Quality signal: "high", "medium", "low", or "none"
+
         Returns:
-            Generated response text
+            GenerationResult with .text (str) and token counts (.input_tokens, .output_tokens)
         """
         logger.info(f"Generating response with Gemini (context_quality={context_quality})")
 
@@ -93,27 +107,30 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
             formatted_messages = self._build_messages(query, context, conversation_history, context_quality)
 
             # Run Gemini API call in thread pool to avoid blocking event loop
-            response_text = await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._call_gemini_sync,
                 formatted_messages
             )
 
-            logger.info(f"Generated response ({len(response_text)} characters)")
-            return response_text
+            logger.info(
+                f"Generated response ({len(result.text)} chars, "
+                f"in={result.input_tokens} out={result.output_tokens} tokens)"
+            )
+            return result
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             raise
 
-    def _call_gemini_sync(self, formatted_messages: List[Dict]) -> str:
+    def _call_gemini_sync(self, formatted_messages: List[Dict]) -> GenerationResult:
         """
-        Synchronous Gemini API call (executed in thread pool)
+        Synchronous Gemini API call (executed in thread pool).
 
         Args:
             formatted_messages: List of dicts with 'role' and 'content' keys
 
         Returns:
-            Generated response text
+            GenerationResult with text and token counts extracted from usage_metadata
         """
         # Initialize model with system prompt
         model = genai.GenerativeModel(
@@ -141,11 +158,21 @@ Tu función es responder preguntas de clientes basándote exclusivamente en el c
         # Generate response
         response = model.generate_content(contents)
 
-        # Extract text from response
-        if response.text:
-            return response.text
+        if not response.text:
+            raise ValueError("Empty response from Gemini API")
 
-        raise ValueError(f"Empty response from Gemini API")
+        # Extract token usage from usage_metadata (available in most SDK versions)
+        input_tokens = 0
+        output_tokens = 0
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+            output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+
+        return GenerationResult(
+            text=response.text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
     def _build_messages(
         self,

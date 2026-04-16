@@ -60,3 +60,17 @@ class StatsResponse(BaseModel):
     embedding_model: str
     vector_dimension: int
     supabase_url: str
+
+
+class MetricsResponse(BaseModel):
+    """
+    Aggregated metrics response for GET /api/metrics and GET /api/metrics/{user_id}.
+    All numeric values are pre-computed aggregates over the requested time window.
+    """
+    period: Dict = Field(..., description="Time range covered: {from, to}")
+    requests: Dict = Field(..., description="Request counts and success rate")
+    users: Dict = Field(..., description="Unique users and avg requests/user")
+    latency_ms: Dict = Field(..., description="Avg/min/max latency breakdown by phase")
+    tokens: Dict = Field(..., description="Token usage totals and per-request averages")
+    costs: Dict = Field(..., description="Total and per-request estimated USD cost")
+    retrieval: Dict = Field(..., description="Relevance scores, quality distribution, MMR usage")
