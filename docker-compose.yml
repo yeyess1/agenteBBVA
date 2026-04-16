@@ -1,0 +1,44 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: agenteBBVA-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_data:/app/chroma_data
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - agente-bbva-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: agenteBBVA-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Usa variable de .env si existe, sino por defecto usa el nombre del servicio
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+    depends_on:
+      backend:
+        condition: service_healthy  # Espera a que backend esté saludable
+    restart: unless-stopped
+    networks:
+      - agente-bbva-network
+
+networks:
+  agente-bbva-network:
+    driver: bridge

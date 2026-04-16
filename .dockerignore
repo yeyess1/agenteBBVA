@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+.env
+.git
+.gitignore
+chroma_data
+.pytest_cache
+.coverage
+htmlcov
+.agents
+.claude
+frontend/node_modules
+frontend/.next
