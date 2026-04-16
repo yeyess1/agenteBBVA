@@ -39,7 +39,13 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:8000"],
+    allow_origins=[
+        settings.frontend_url,
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://agente-bbva-aak8wa1q3-yeiver-s-projects-0e0b428d.vercel.app",
+        "https://agente-bbva.vercel.app",  # potential alias
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
