@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { askQuestion, clearHistory, type Message, type Source } from "../lib/api";
+import { askQuestion, clearHistory, type Message, type Source } from "@/lib/api";
 
 const USER_ID = "demo-user";
 
