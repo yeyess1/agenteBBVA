@@ -108,16 +108,25 @@ class WebScraper:
             logger.error(f"Error parsing {url}: {e}")
             return None
 
-    def get_sitemap_urls(self) -> List[str]:
+    def get_sitemap_urls(self, max_urls: int = 100) -> List[str]:
         """
-        Get URLs from sitemap + fallback product URLs for comprehensive coverage
+        Get URLs from sitemap with intelligent filtering for Supabase free tier sustainability.
+
+        Strategy:
+        1. Prioritize product/service URLs over blog/articles
+        2. Exclude low-value pages (blog posts, news, redundant pages)
+        3. Limit total URLs to max_urls for free tier sustainability
+
+        Args:
+            max_urls: Maximum URLs to scrape (default 50 for Supabase free tier)
+
         Returns:
-            List of URLs from sitemap + additional product pages
+            Curated list of high-value URLs (products, services, FAQs)
         """
         sitemap_url = settings.bank_website_sitemap_url or f"{self.base_url.rstrip('/')}/sitemap.xml"
         logger.info(f"Fetching sitemap from {sitemap_url}")
 
-        urls = []
+        all_urls = []
         html = self.fetch_page(sitemap_url)
         if html:
             soup = BeautifulSoup(html, "xml")
@@ -125,16 +134,66 @@ class WebScraper:
                 url = loc.text.strip()
                 base_clean = self.base_url.rstrip("/")
                 if url.startswith(base_clean):
-                    urls.append(url)
-            logger.info(f"Found {len(urls)} URLs in sitemap")
+                    all_urls.append(url)
+            logger.info(f"Found {len(all_urls)} total URLs in sitemap")
         else:
             logger.warning("Failed to fetch sitemap")
 
-        # Fallback: Add essential product URLs if sitemap is incomplete
+        # ── Filter URLs: Prioritize products, services, FAQ over blog ────────
         base_clean = self.base_url.rstrip("/")
-        if len(urls) < 20:
-            logger.info("Sitemap incomplete, adding essential product URLs...")
-            product_urls = [
+
+        # Priority patterns (high-value for RAG)
+        priority_patterns = [
+            "/productos/",      # Product pages
+            "/servicios/",      # Services
+            "/preguntas",       # FAQ
+            "/tarifas",         # Pricing
+            "/personas/",       # Personal banking
+            "/empresas/",       # Business banking
+            "/pymes/",          # SME banking
+            "/valores.html",    # Company values
+        ]
+
+        # Exclude patterns (low-value for RAG)
+        exclude_patterns = [
+            "/blog/",
+            "/noticias/",
+            "/articulos/",
+            "/prensa/",
+            "/media/",
+            "/sitemap",
+            "/robots.txt",
+            ".pdf",
+            ".jpg",
+            ".png",
+        ]
+
+        # Separate URLs by priority
+        priority_urls = []
+        other_urls = []
+
+        for url in all_urls:
+            # Check if should be excluded
+            if any(pattern in url.lower() for pattern in exclude_patterns):
+                continue
+
+            # Check if matches priority pattern
+            if any(pattern in url.lower() for pattern in priority_patterns):
+                priority_urls.append(url)
+            else:
+                other_urls.append(url)
+
+        # Combine: priority first, then others, up to max_urls
+        selected_urls = priority_urls[:max_urls]
+        if len(selected_urls) < max_urls:
+            selected_urls.extend(other_urls[:max_urls - len(selected_urls)])
+
+        logger.info(f"Filtered to {len(selected_urls)} high-value URLs (priority: {len(priority_urls)}, other: {len(other_urls)})")
+
+        # ── Fallback: Add essential product URLs if selection is too small ────
+        if len(selected_urls) < 10:
+            logger.info("Selection too small, adding essential product URLs...")
+            fallback_urls = [
                 f"{base_clean}/personas/productos/cuentas/",
                 f"{base_clean}/personas/productos/tarjetas/",
                 f"{base_clean}/personas/productos/depositos-e-inversion/",
@@ -144,15 +203,11 @@ class WebScraper:
                 f"{base_clean}/empresas/productos/",
                 f"{base_clean}/pymes/productos/",
             ]
+            for url in fallback_urls:
+                if url not in selected_urls and len(selected_urls) < max_urls:
+                    selected_urls.append(url)
 
-            # Add URLs that aren't already in sitemap
-            for url in product_urls:
-                if url not in urls:
-                    urls.append(url)
-
-            logger.info(f"Added {len(product_urls)} product URLs, total now: {len(urls)}")
-
-        return urls if urls else [self.base_url]
+        return selected_urls if selected_urls else [self.base_url]
 
     def scrape_all(self) -> List[Dict]:
         """

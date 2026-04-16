@@ -33,38 +33,61 @@ class SupabaseVectorStore:
         self.model = SentenceTransformer(settings.embedding_model)
         logger.info(f"Model loaded. Embedding dimension: {self.model.get_embedding_dimension()}")
 
-    def add_documents(self, documents: List[Dict]) -> int:
+    def add_documents(self, documents: List[Dict], batch_size: int = 50) -> int:
         """
-        Add documents to vector store with embeddings
+        Add documents to vector store with embeddings.
+        Uses smaller batches to avoid Supabase timeout issues.
+
         Args:
             documents: List of dicts with 'id', 'content', 'metadata'
+            batch_size: Number of documents per batch insert (default 50)
+
         Returns:
             Number of documents added
         """
+        import time
+
         try:
-            documents_to_insert = []
+            total_added = 0
 
-            for doc in documents:
-                # Generate embedding for content
-                content = doc["content"]
-                embedding = self.model.encode(content, convert_to_numpy=True)
+            # Process documents in batches to avoid timeout
+            for batch_start in range(0, len(documents), batch_size):
+                batch_end = min(batch_start + batch_size, len(documents))
+                batch_docs = documents[batch_start:batch_end]
 
-                # Prepare document for insertion
-                doc_record = {
-                    "chunk_id": doc["id"],
-                    "content": content,
-                    "embedding": embedding.tolist(),  # pgvector expects list
-                    "metadata": doc.get("metadata", {}),
-                    "source_url": doc.get("metadata", {}).get("url"),
-                    "title": doc.get("metadata", {}).get("title"),
-                }
-                documents_to_insert.append(doc_record)
+                logger.info(f"Processing batch {batch_start // batch_size + 1}: {len(batch_docs)} documents")
 
-            # Batch insert into Supabase
-            response = self.client.table("documents").insert(documents_to_insert).execute()
+                documents_to_insert = []
 
-            logger.info(f"Added {len(documents_to_insert)} documents to Supabase vector store")
-            return len(documents_to_insert)
+                for doc in batch_docs:
+                    # Generate embedding for content
+                    content = doc["content"]
+                    embedding = self.model.encode(content, convert_to_numpy=True)
+
+                    # Prepare document for insertion
+                    doc_record = {
+                        "chunk_id": doc["id"],
+                        "content": content,
+                        "embedding": embedding.tolist(),  # pgvector expects list
+                        "metadata": doc.get("metadata", {}),
+                        "source_url": doc.get("metadata", {}).get("url"),
+                        "title": doc.get("metadata", {}).get("title"),
+                    }
+                    documents_to_insert.append(doc_record)
+
+                # Batch insert into Supabase
+                response = self.client.table("documents").insert(documents_to_insert).execute()
+                batch_added = len(documents_to_insert)
+                total_added += batch_added
+
+                logger.info(f"✅ Added {batch_added} documents (total: {total_added})")
+
+                # Small delay between batches to avoid rate limiting
+                if batch_end < len(documents):
+                    time.sleep(0.5)
+
+            logger.info(f"✅ Successfully added {total_added} documents to Supabase vector store")
+            return total_added
 
         except Exception as e:
             logger.error(f"Error adding documents: {e}")

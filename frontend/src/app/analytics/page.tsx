@@ -13,6 +13,9 @@ import ContextQualityChart from "@/components/Dashboard/ContextQualityChart";
 import LatencyChart from "@/components/Dashboard/LatencyChart";
 import TokenUsageChart from "@/components/Dashboard/TokenUsageChart";
 import ConversationsPanel from "@/components/Dashboard/ConversationsPanel";
+import DeflectionRateCard from "@/components/Dashboard/DeflectionRateCard";
+import CostComparisonCard from "@/components/Dashboard/CostComparisonCard";
+import TopKeywordsSection from "@/components/Dashboard/TopKeywordsSection";
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("es-CO").format(n);
@@ -208,78 +211,43 @@ export default function AnalyticsPage() {
         {/* ── Dashboard content ─────────────────────────────────────────── */}
         {!loading && hasData && data && (
           <>
-            {/* Row 1 — KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
-                title="Consultas totales"
-                value={fmt(data.requests.total)}
-                subtitle={`${data.users.unique} usuario${data.users.unique !== 1 ? "s" : ""} únicos`}
-                trend={
-                  data.requests.success_rate >= 0.95
-                    ? "up"
-                    : data.requests.success_rate < 0.8
-                    ? "down"
-                    : "neutral"
-                }
-                trendLabel={`${Math.round(data.requests.success_rate * 100)}% éxito`}
-                icon={icons.chat}
-                accentColor="blue"
+            {/* Row 1 — Top Keywords (Primary insight) */}
+            <TopKeywordsSection keywords={data.insights?.top_keywords ?? []} />
+
+            {/* Row 2 — Business KPIs: Cost + Deflection */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <CostComparisonCard
+                ragTotalUsd={data.business_metrics?.cost_comparison?.rag_total_usd ?? 0}
+                humanTotalUsd={data.business_metrics?.cost_comparison?.human_total_usd ?? 0}
+                savingsTotalUsd={data.business_metrics?.cost_comparison?.savings_total_usd ?? 0}
+                ragPerQueryUsd={data.business_metrics?.cost_comparison?.rag_per_query_usd ?? 0}
+                humanPerQueryUsd={data.business_metrics?.cost_comparison?.human_per_query_usd ?? 9}
               />
-              <StatCard
-                title="Usuarios únicos"
-                value={fmt(data.users.unique)}
-                subtitle={`${data.users.avg_requests_per_user.toFixed(1)} consultas/usuario`}
-                icon={icons.users}
-                accentColor="purple"
-              />
-              <StatCard
-                title="Latencia promedio"
-                value={
-                  data.latency_ms.avg_total > 0
-                    ? `${Math.round(data.latency_ms.avg_total)}ms`
-                    : "—"
-                }
-                subtitle={`Máx: ${Math.round(data.latency_ms.max_total)}ms`}
-                trend={
-                  data.latency_ms.avg_total < 500
-                    ? "up"
-                    : data.latency_ms.avg_total > 2000
-                    ? "down"
-                    : "neutral"
-                }
-                trendLabel={
-                  data.latency_ms.avg_total < 500
-                    ? "Rápida"
-                    : data.latency_ms.avg_total > 2000
-                    ? "Lenta"
-                    : "Normal"
-                }
-                icon={icons.clock}
-                accentColor="amber"
-              />
-              <StatCard
-                title="Tokens utilizados"
-                value={
-                  data.tokens.total > 1_000_000
-                    ? `${(data.tokens.total / 1_000_000).toFixed(1)}M`
-                    : data.tokens.total > 1_000
-                    ? `${(data.tokens.total / 1_000).toFixed(1)}K`
-                    : fmt(data.tokens.total)
-                }
-                subtitle={`Costo: $${data.costs.total_usd.toFixed(4)} USD`}
-                icon={icons.dollar}
-                accentColor="green"
+              <DeflectionRateCard
+                deflectionRate={data.business_metrics?.deflection_rate ?? 0}
+                deflectedCases={data.business_metrics?.deflected_cases ?? 0}
+                totalCases={data.requests.total}
               />
             </div>
 
-            {/* Row 2 — Context Quality (primary) + Conversations Panel */}
+            {/* Row 3 — Performance: Latency + Context Quality */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <LatencyChart
+                avgTotal={data.latency_ms.avg_total}
+                avgRetrieval={data.latency_ms.avg_retrieval}
+                avgGeneration={data.latency_ms.avg_generation}
+                maxTotal={data.latency_ms.max_total}
+              />
               <ContextQualityChart
                 distribution={data.retrieval.context_quality_distribution}
                 avgScore={data.retrieval.avg_relevance_score}
                 mmrCount={data.retrieval.mmr_applied_count}
                 totalRequests={data.requests.total}
               />
+            </div>
+
+            {/* Row 4 — Usage: Conversations + Tokens */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ConversationsPanel
                 total={data.requests.total}
                 successful={data.requests.successful}
@@ -289,16 +257,6 @@ export default function AnalyticsPage() {
                 avgPerUser={data.users.avg_requests_per_user}
                 periodFrom={data.period.from}
                 periodTo={data.period.to}
-              />
-            </div>
-
-            {/* Row 3 — Latency + Tokens */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <LatencyChart
-                avgTotal={data.latency_ms.avg_total}
-                avgRetrieval={data.latency_ms.avg_retrieval}
-                avgGeneration={data.latency_ms.avg_generation}
-                maxTotal={data.latency_ms.max_total}
               />
               <TokenUsageChart
                 totalInput={data.tokens.total_input}

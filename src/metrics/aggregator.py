@@ -265,54 +265,58 @@ class MetricsAggregator:
     @staticmethod
     def _extract_top_keywords(queries: list, top_n: int = 10) -> list:
         """
-        Extract top keywords from a list of queries.
-        Filters out common stopwords and returns word frequency ranking.
+        Extract top product categories from queries instead of individual words.
+        Maps banking terminology to business-relevant categories.
 
         Args:
             queries: List of query strings
-            top_n: Number of top keywords to return
+            top_n: Number of top categories to return
 
         Returns:
             List of dicts with {"keyword": str, "count": int, "frequency": float}
         """
-        import re
         from collections import Counter
 
-        # Common stopwords in Spanish and English
-        stopwords = {
-            "el", "la", "de", "que", "y", "a", "en", "un", "es", "se", "los", "las",
-            "una", "por", "con", "no", "una", "su", "al", "o", "este", "sí", "porque",
-            "esta", "son", "está", "fue", "ha", "hay", "como", "más", "pero", "sus",
-            "the", "a", "an", "and", "or", "of", "in", "to", "is", "be", "are", "was",
-            "were", "been", "have", "has", "had", "do", "does", "did", "will", "would",
-            "could", "should", "may", "might", "can", "for", "if", "as", "on", "at",
-            "me", "what", "which", "who", "how", "why", "cuando", "donde", "como",
+        # Product categories and their keywords (Spanish + English)
+        product_categories = {
+            "CDT": ["cdt", "certificado", "depósito", "término", "inversión"],
+            "Tarjetas": ["tarjeta", "crédito", "débito", "card", "visa", "mastercard"],
+            "Créditos": ["crédito", "préstamo", "financiamiento", "hipotecario", "personal", "auto"],
+            "Cuentas": ["cuenta", "ahorros", "corriente", "depósito", "checking"],
+            "Seguros": ["seguro", "insurance", "póliza", "cobertura"],
+            "Servicios Digitales": ["app", "bbva net", "wallet", "digital", "app", "móvil", "online"],
+            "Empresas": ["empresa", "negocio", "pyme", "comercial", "corporate"],
+            "Pagos": ["pago", "transferencia", "envío", "remesa", "pse"],
+            "Fondos": ["fondo", "inversión", "rentabilidad", "portafolio"],
+            "Asesoría": ["asesor", "asesoría", "consulta", "información", "ayuda"],
         }
 
-        # Extract and clean words
-        words = []
+        category_counts = Counter()
+
+        # Extract categories from each query
         for query in queries:
             if not query:
                 continue
-            # Convert to lowercase and split by non-word characters
-            cleaned = re.findall(r"\b\w+\b", query.lower())
-            # Filter stopwords and short words
-            filtered = [w for w in cleaned if w not in stopwords and len(w) > 2]
-            words.extend(filtered)
 
-        if not words:
+            query_lower = query.lower()
+
+            # Check which categories match this query
+            for category, keywords in product_categories.items():
+                if any(keyword in query_lower for keyword in keywords):
+                    category_counts[category] += 1
+
+        if not category_counts:
             return []
 
-        # Count frequency
-        word_counts = Counter(words)
-        top_keywords = word_counts.most_common(top_n)
+        # Get top N categories
+        top_categories = category_counts.most_common(top_n)
+        total_mentions = sum(category_counts.values())
 
-        total_words = sum(word_counts.values())
         return [
             {
-                "keyword": keyword,
+                "keyword": category,
                 "count": count,
-                "frequency": round(count / total_words, 4),
+                "frequency": round(count / total_mentions, 4),
             }
-            for keyword, count in top_keywords
+            for category, count in top_categories
         ]
