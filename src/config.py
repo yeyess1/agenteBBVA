@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # RAG Configuration
     chunk_size: int = 500
     chunk_overlap: int = 100
-    retrieval_top_k: int = 5
+    retrieval_top_k: int = 10
 
     # Conversation
     context_window: int = 5
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
 
     # RAG Retrieval Configuration
-    retrieval_score_threshold: float = 0.40  # BGE-M3 cosine similarity minimum (0.40-0.54 = weak relevance)
+    retrieval_score_threshold: float = 0.50  # BGE-M3 cosine similarity minimum (rejects weak matches)
     mmr_lambda: float = 0.7  # Maximal Marginal Relevance: λ·relevance - (1-λ)·diversity
 
     # LLM Configuration
