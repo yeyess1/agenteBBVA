@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS metrics_requests (
     session_id          VARCHAR(50),
 
     -- ── Request metadata ──────────────────────────────────
+    query_text          TEXT,                           -- For keyword extraction
     query_length        INT          DEFAULT 0,
     answer_length       INT          DEFAULT 0,
     total_latency_ms    FLOAT,

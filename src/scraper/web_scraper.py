@@ -32,7 +32,7 @@ class WebScraper:
 
     def fetch_page(self, url: str) -> Optional[str]:
         """
-        Fetch page content
+        Fetch page content with robust error handling
         Args:
             url: URL to fetch
         Returns:
@@ -41,7 +41,13 @@ class WebScraper:
         try:
             response = self.session.get(url, timeout=10)
             response.raise_for_status()
-            return response.text
+
+            # Try to decode with detected encoding, fallback to utf-8
+            try:
+                return response.text
+            except (UnicodeDecodeError, AttributeError):
+                return response.content.decode('utf-8', errors='ignore')
+
         except requests.RequestException as e:
             logger.error(f"Failed to fetch {url}: {e}")
             return None
@@ -80,48 +86,72 @@ class WebScraper:
         """
         logger.info(f"Scraping {url}")
         html = self.fetch_page(url)
-        if not html:
+        if not html or not html.strip():
+            logger.warning(f"No content from {url}")
             return None
 
-        soup = BeautifulSoup(html, "html.parser")
-        title = soup.title.string if soup.title else "Unknown"
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            title = soup.title.string if soup.title else "Unknown"
 
-        # Return HTML content for hybrid chunking (chunker will parse it)
-        # Also include plain text as fallback
-        if not html.strip():
-            logger.warning(f"No content extracted from {url}")
+            # Validate that we got actual HTML content
+            if not soup.body and not soup.find("main") and not soup.find("article"):
+                logger.warning(f"No valid HTML structure in {url}")
+                return None
+
+            return {
+                "url": url,
+                "title": title,
+                "content": html,
+            }
+        except Exception as e:
+            logger.error(f"Error parsing {url}: {e}")
             return None
-
-        return {
-            "url": url,
-            "title": title,
-            "content": html,  # ✅ HTML para hybrid chunking
-        }
 
     def get_sitemap_urls(self) -> List[str]:
         """
-        Get URLs from sitemap
+        Get URLs from sitemap + fallback product URLs for comprehensive coverage
         Returns:
-            List of URLs from sitemap
+            List of URLs from sitemap + additional product pages
         """
         sitemap_url = settings.bank_website_sitemap_url or f"{self.base_url.rstrip('/')}/sitemap.xml"
         logger.info(f"Fetching sitemap from {sitemap_url}")
 
-        html = self.fetch_page(sitemap_url)
-        if not html:
-            logger.warning("Failed to fetch sitemap, will scrape homepage only")
-            return [self.base_url]
-
-        soup = BeautifulSoup(html, "xml")
         urls = []
+        html = self.fetch_page(sitemap_url)
+        if html:
+            soup = BeautifulSoup(html, "xml")
+            for loc in soup.find_all("loc"):
+                url = loc.text.strip()
+                base_clean = self.base_url.rstrip("/")
+                if url.startswith(base_clean):
+                    urls.append(url)
+            logger.info(f"Found {len(urls)} URLs in sitemap")
+        else:
+            logger.warning("Failed to fetch sitemap")
 
-        for loc in soup.find_all("loc"):
-            url = loc.text.strip()
-            base_clean = self.base_url.rstrip("/")
-            if url.startswith(base_clean):
-                urls.append(url)
+        # Fallback: Add essential product URLs if sitemap is incomplete
+        base_clean = self.base_url.rstrip("/")
+        if len(urls) < 20:
+            logger.info("Sitemap incomplete, adding essential product URLs...")
+            product_urls = [
+                f"{base_clean}/personas/productos/cuentas/",
+                f"{base_clean}/personas/productos/tarjetas/",
+                f"{base_clean}/personas/productos/depositos-e-inversion/",
+                f"{base_clean}/personas/productos/creditos/",
+                f"{base_clean}/personas/productos/prestamos/",
+                f"{base_clean}/personas/productos/seguros/",
+                f"{base_clean}/empresas/productos/",
+                f"{base_clean}/pymes/productos/",
+            ]
 
-        logger.info(f"Found {len(urls)} URLs in sitemap")
+            # Add URLs that aren't already in sitemap
+            for url in product_urls:
+                if url not in urls:
+                    urls.append(url)
+
+            logger.info(f"Added {len(product_urls)} product URLs, total now: {len(urls)}")
+
         return urls if urls else [self.base_url]
 
     def scrape_all(self) -> List[Dict]:

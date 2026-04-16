@@ -52,6 +52,7 @@ class MetricsCollector:
         self._retrieval_data: Optional[Dict] = None
         self._generation_data: Optional[Dict] = None
 
+        self._query_text: str = ""
         self._query_length: int = 0
         self._answer_length: int = 0
         self._success: bool = True
@@ -76,6 +77,8 @@ class MetricsCollector:
             self._generation_end = time.monotonic()
 
     def set_query(self, query: str) -> None:
+        """Record the query text for keyword extraction in analytics."""
+        self._query_text = query[:1000]  # Truncate to 1000 chars for storage
         self._query_length = len(query)
 
     def set_retrieval_stats(
@@ -173,6 +176,7 @@ class MetricsCollector:
             record = {
                 "user_id": metrics.user_id,
                 "session_id": metrics.session_id,
+                "query_text": self._query_text,
                 "query_length": metrics.query_length,
                 "answer_length": metrics.answer_length,
                 "total_latency_ms": metrics.total_latency_ms,

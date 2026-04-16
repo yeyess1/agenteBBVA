@@ -86,6 +86,13 @@ class MetricsAggregator:
         total = len(records)
         successful = [r for r in records if r.get("success", True)]
 
+        # ── Deflection Rate: successful queries with medium+ context quality ────
+        deflected = [
+            r for r in successful
+            if r.get("context_quality", "none") in ["high", "medium"]
+        ]
+        deflection_rate = round(len(deflected) / total, 4) if total > 0 else 0.0
+
         # ── Latency ────────────────────────────────────────────
         total_lats = [r.get("total_latency_ms", 0.0) for r in records]
         retr_lats = [r.get("retrieval_latency_ms", 0.0) for r in records]
@@ -98,6 +105,12 @@ class MetricsAggregator:
 
         # ── Cost ───────────────────────────────────────────────
         total_cost = sum(r.get("estimated_cost_usd", 0.0) for r in records)
+
+        # ── Cost Comparison: RAG vs Human ──────────────────────
+        human_cost_per_query = 9.0  # USD per human-handled query
+        total_human_cost = total * human_cost_per_query
+        total_savings_usd = total_human_cost - total_cost
+        avg_rag_cost_per_query = round(total_cost / total, 8) if total > 0 else 0.0
 
         # ── Context quality distribution ───────────────────────
         quality_counts: Dict[str, int] = {"high": 0, "medium": 0, "low": 0, "none": 0}
@@ -112,6 +125,9 @@ class MetricsAggregator:
             for r in records
             if r.get("retrieval_avg_score") is not None
         ]
+
+        # ── Top Keywords from queries ──────────────────────────
+        top_keywords = self._extract_top_keywords([r.get("query_text", "") for r in records])
 
         unique_users = len({r.get("user_id", "") for r in records})
 
@@ -135,6 +151,17 @@ class MetricsAggregator:
                 "avg_requests_per_user": (
                     round(total / unique_users, 2) if unique_users > 0 else 0.0
                 ),
+            },
+            "business_metrics": {
+                "deflection_rate": deflection_rate,
+                "deflected_cases": len(deflected),
+                "cost_comparison": {
+                    "rag_total_usd": round(total_cost, 6),
+                    "human_total_usd": round(total_human_cost, 2),
+                    "savings_total_usd": round(total_savings_usd, 2),
+                    "rag_per_query_usd": avg_rag_cost_per_query,
+                    "human_per_query_usd": human_cost_per_query,
+                },
             },
             "latency_ms": {
                 "avg_total": safe_avg(total_lats),
@@ -173,6 +200,9 @@ class MetricsAggregator:
                     1 for r in records if r.get("mmr_applied", False)
                 ),
             },
+            "insights": {
+                "top_keywords": top_keywords,
+            },
         }
 
     @staticmethod
@@ -189,6 +219,17 @@ class MetricsAggregator:
                 "unique": 0,
                 "scoped_user_id": user_id,
                 "avg_requests_per_user": 0.0,
+            },
+            "business_metrics": {
+                "deflection_rate": 0.0,
+                "deflected_cases": 0,
+                "cost_comparison": {
+                    "rag_total_usd": 0.0,
+                    "human_total_usd": 0.0,
+                    "savings_total_usd": 0.0,
+                    "rag_per_query_usd": 0.0,
+                    "human_per_query_usd": 9.0,
+                },
             },
             "latency_ms": {
                 "avg_total": 0.0,
@@ -216,4 +257,62 @@ class MetricsAggregator:
                 },
                 "mmr_applied_count": 0,
             },
+            "insights": {
+                "top_keywords": [],
+            },
         }
+
+    @staticmethod
+    def _extract_top_keywords(queries: list, top_n: int = 10) -> list:
+        """
+        Extract top keywords from a list of queries.
+        Filters out common stopwords and returns word frequency ranking.
+
+        Args:
+            queries: List of query strings
+            top_n: Number of top keywords to return
+
+        Returns:
+            List of dicts with {"keyword": str, "count": int, "frequency": float}
+        """
+        import re
+        from collections import Counter
+
+        # Common stopwords in Spanish and English
+        stopwords = {
+            "el", "la", "de", "que", "y", "a", "en", "un", "es", "se", "los", "las",
+            "una", "por", "con", "no", "una", "su", "al", "o", "este", "sí", "porque",
+            "esta", "son", "está", "fue", "ha", "hay", "como", "más", "pero", "sus",
+            "the", "a", "an", "and", "or", "of", "in", "to", "is", "be", "are", "was",
+            "were", "been", "have", "has", "had", "do", "does", "did", "will", "would",
+            "could", "should", "may", "might", "can", "for", "if", "as", "on", "at",
+            "me", "what", "which", "who", "how", "why", "cuando", "donde", "como",
+        }
+
+        # Extract and clean words
+        words = []
+        for query in queries:
+            if not query:
+                continue
+            # Convert to lowercase and split by non-word characters
+            cleaned = re.findall(r"\b\w+\b", query.lower())
+            # Filter stopwords and short words
+            filtered = [w for w in cleaned if w not in stopwords and len(w) > 2]
+            words.extend(filtered)
+
+        if not words:
+            return []
+
+        # Count frequency
+        word_counts = Counter(words)
+        top_keywords = word_counts.most_common(top_n)
+
+        total_words = sum(word_counts.values())
+        return [
+            {
+                "keyword": keyword,
+                "count": count,
+                "frequency": round(count / total_words, 4),
+            }
+            for keyword, count in top_keywords
+        ]
