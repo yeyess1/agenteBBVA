@@ -6,16 +6,16 @@ import {
   getGlobalMetrics,
   type MetricsData,
   type TimeWindow,
-} from "../../lib/metricsApi";
-import StatCard from "../../components/Dashboard/StatCard";
-import Filters from "../../components/Dashboard/Filters";
-import ContextQualityChart from "../../components/Dashboard/ContextQualityChart";
-import LatencyChart from "../../components/Dashboard/LatencyChart";
-import TokenUsageChart from "../../components/Dashboard/TokenUsageChart";
-import ConversationsPanel from "../../components/Dashboard/ConversationsPanel";
-import DeflectionRateCard from "../../components/Dashboard/DeflectionRateCard";
-import CostComparisonCard from "../../components/Dashboard/CostComparisonCard";
-import TopKeywordsSection from "../../components/Dashboard/TopKeywordsSection";
+} from "@/lib/metricsApi";
+import StatCard from "@/components/Dashboard/StatCard";
+import Filters from "@/components/Dashboard/Filters";
+import ContextQualityChart from "@/components/Dashboard/ContextQualityChart";
+import LatencyChart from "@/components/Dashboard/LatencyChart";
+import TokenUsageChart from "@/components/Dashboard/TokenUsageChart";
+import ConversationsPanel from "@/components/Dashboard/ConversationsPanel";
+import DeflectionRateCard from "@/components/Dashboard/DeflectionRateCard";
+import CostComparisonCard from "@/components/Dashboard/CostComparisonCard";
+import TopKeywordsSection from "@/components/Dashboard/TopKeywordsSection";
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("es-CO").format(n);

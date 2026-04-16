@@ -1,6 +1,6 @@
 "use client";
 
-import { type TimeWindow, WINDOW_LABELS } from "../../lib/metricsApi";
+import { type TimeWindow, WINDOW_LABELS } from "@/lib/metricsApi";
 
 interface FiltersProps {
   window: TimeWindow;

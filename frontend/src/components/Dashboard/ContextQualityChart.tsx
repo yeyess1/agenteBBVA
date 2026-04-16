@@ -8,7 +8,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import type { ContextQualityDistribution } from "../../lib/metricsApi";
+import type { ContextQualityDistribution } from "@/lib/metricsApi";
 
 interface Props {
   distribution: ContextQualityDistribution;
